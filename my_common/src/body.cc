@@ -6,7 +6,7 @@ namespace common {
 Body::Body(const float mass_init) : mass(mass_init) {}
 
 void Body::Velocity(const core::Vec2F& vel) {
-  velocity = vel;
+  velocity_ = vel;
 }
 
 void Body::AddForce(const core::Vec2F& force) {
@@ -18,13 +18,13 @@ void Body::Tick(const float dt) {
   core::Vec2F acceleration = accumulated_force / mass;
 
   // Mise à jour de la vitesse
-  velocity += acceleration * dt;
+  velocity_ += acceleration * dt;
 
   // // Frottement de l'air
   // velocity += -velocity * common::world::air_friction * dt;
 
   // Mise à jour de la position
-  position += velocity * dt;
+  position += velocity_ * dt;
 
   // Réinitialiser les forces pour la prochaine frame
   accumulated_force = {0,0};

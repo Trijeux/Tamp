@@ -17,9 +17,9 @@ struct ColliderPair;
 struct ColliderPairHasher;
 
 using BodyIndex = core::Index<Body>;
-using ColliderIndex = core::Index<int>; // We'll manage indices as ints for colliders
+using ColliderIndex = core::Index<int>; // indices simples pour les colliders
 
-// Body management (existants)
+// Body management
 [[nodiscard]] BodyIndex AddBody(float mass);
 [[nodiscard]] Body& get_body_at(BodyIndex body_index);
 void RemoveBody(BodyIndex body_index);
@@ -31,8 +31,10 @@ struct Circle {
 };
 
 struct Collider {
-  BodyIndex body;
+  BodyIndex body{-1}; // invalide par défaut
   Circle circle;
+
+  Collider() = default; // constructeur par défaut explicite
 };
 
 struct ColliderPair {
@@ -49,7 +51,6 @@ struct ColliderPairHasher {
     int ai = p.a.index();
     int bi = p.b.index();
     if (ai > bi) std::swap(ai, bi);
-    // combine
     return std::hash<int>()(ai) ^ (std::hash<int>()(bi) << 1);
   }
 };
@@ -71,4 +72,4 @@ void SetContactListener(ContactListener* l);
 
 } // namespace common::world
 
-#endif //CORE_WORLD_H
+#endif // CORE_WORLD_H

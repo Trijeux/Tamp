@@ -18,10 +18,11 @@ public:
   void AddForce(const core::Vec2F& force);
   void Tick(float dt);
 
+  [[nodiscard]] core::Vec2F velocity() const {return velocity_;};
   [[nodiscard]] bool IsInvalid() const {return mass <= 0.f;}
 private:
 
-  core::Vec2F velocity = {0,0};
+  core::Vec2F velocity_ = {0,0};
   core::Vec2F accumulated_force = {0,0};
 };
 
