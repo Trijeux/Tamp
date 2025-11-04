@@ -1,184 +1,135 @@
-﻿#include <GLFW/glfw3.h>
-#include <glad/glad.h>
-
-#include <vector>
-#include <random>
-#include <chrono>
-#include <iostream>
-
+﻿#include "engine/engine.h"
+#include "engine/window.h"
 #include "world.h"
 #include "body.h"
+#include <vector>
+#include <random>
+#include <imgui.h>
 
-using namespace common;
-using namespace common::world;
+#include "engine/gui.h"
+#include "engine/renderer.h"
 
-static const int WIN_W = 1024;
-static const int WIN_H = 768;
+// ------------------- COLLIDER SYSTEM -------------------
+namespace collider {
 
-struct RenderCircle {
-  ColliderIndex collider;
-  bool overlapping = false;
+struct Circle {
+  common::world::BodyIndex                    body;
+    common::world::ColliderIndex collider;
+    float                        radius;
+    float                        r, g, b, a;
 };
 
-class TriggerSample : public ContactListener {
+class ColliderSystem final : public common::SystemInterface,
+                             public common::OnGuiInterface,
+                             public common::DrawInterface {
 public:
-  TriggerSample(std::vector<RenderCircle>& circles_ref) : circles(circles_ref) {}
+    void Begin() override {
+        listener_.circles = &circles_;
+        common::SetContactListener(&listener_);
 
-  void OnTriggerEnter(ColliderIndex a, ColliderIndex b) override {
-    set_overlap(a, true);
-    set_overlap(b, true);
-  }
+        std::uniform_real_distribution<float> posX(50.f, 800.f - 50.f);
+        std::uniform_real_distribution<float> posY(50.f, 600.f - 50.f);
+        std::uniform_real_distribution<float> velDist(-1.f, 1.f);
+        std::uniform_real_distribution<float> radDist(minRadius_, maxRadius_);
 
-  void OnTriggerExit(ColliderIndex a, ColliderIndex b) override {
-    set_overlap(a, false);
-    set_overlap(b, false);
-  }
+        for (int i = 0; i < circleCount_; ++i) {
+            float                    radius = radDist(rng_);
+            common::world::BodyIndex b = common::world::AddBody(1.f);
+            auto&                    body = common::world::get_body_at(b);
+            body.position = { posX(rng_), posY(rng_) };
+            body.Velocity({ velDist(rng_) * maxSpeed_, velDist(rng_) * maxSpeed_ });
+
+            common::world::ColliderIndex c = common::world::AddCollider(b, radius);
+
+            circles_.push_back({b, c, radius, 1.f, 0.f, 0.f, 1.f});
+        }
+    }
+
+    void End() override {}
+
+    void Update(float dt) override {
+        for (auto& c : circles_) {
+            auto& body = common::world::get_body_at(c.body);
+            auto vel = body.Velocity();
+            float r = c.radius;
+
+            // rebond sur les bords
+            if (body.position.x - r < 0.f) { body.position.x = r; vel.x = std::abs(vel.x); body.Velocity(vel);}
+            if (body.position.x + r > 800.f) { body.position.x = 800.f - r; vel.x = -std::abs(vel.x); body.Velocity(vel);}
+            if (body.position.y - r < 0.f) { body.position.y = r; vel.y = std::abs(vel.y); body.Velocity(vel);}
+            if (body.position.y + r > 600.f) { body.position.y = 600.f - r; vel.y = -std::abs(vel.y); body.Velocity(vel);}
+        }
+
+        common::world::Tick(dt);
+    }
+
+    void FixedUpdate() override {}
+
+    void Draw() override {
+        for (auto& c : circles_) {
+            auto& body = common::world::get_body_at(c.body);
+            common::DrawCircle(body.position.x, body.position.y, c.radius,
+                               SDL_FColor{c.r, c.g, c.b, c.a});
+        }
+    }
+
+    void OnGui() override {
+        ImGui::Begin("Collider Sample");
+        ImGui::SliderInt("Nombre de cercles", &circleCount_, 5, 200);
+        ImGui::SliderFloat("Rayon min", &minRadius_, 1.f, 100.f);
+        ImGui::SliderFloat("Rayon max", &maxRadius_, 1.f, 100.f);
+        ImGui::SliderFloat("Vitesse min", &minSpeed_, 1.f, 500.f);
+        ImGui::SliderFloat("Vitesse max", &maxSpeed_, 1.f, 500.f);
+        ImGui::End();
+    }
 
 private:
-  std::vector<RenderCircle>& circles;
+    std::vector<Circle> circles_;
+    std::mt19937 rng_{std::random_device{}()};
 
-  void set_overlap(ColliderIndex idx, bool state) {
-    for (auto &rc : circles) {
-      if (rc.collider == idx) {
-        rc.overlapping = state;
-        return;
-      }
-    }
-  }
+    int circleCount_ = 30;
+    float minRadius_ = 8.f;
+    float maxRadius_ = 30.f;
+    float minSpeed_ = 50.f;
+    float maxSpeed_ = 150.f;
+
+    class Listener : public common::world::ContactListener {
+    public:
+        std::vector<Circle>* circles = nullptr;
+        void                 OnTriggerEnter(common::world::ColliderIndex a, common::world::ColliderIndex b) override {
+            SetOverlap(a, true); SetOverlap(b, true);
+        }
+        void OnTriggerExit(common::world::ColliderIndex a, common::world::ColliderIndex b) override {
+            SetOverlap(a, false); SetOverlap(b, false);
+        }
+    private:
+        void SetOverlap(common::world::ColliderIndex idx, bool state) {
+            for (auto& c : *circles)
+                if (c.collider == idx)
+                    c.r = state ? 0.f : 1.f,
+                    c.g = state ? 1.f : 0.f,
+                    c.b = 0.f;
+        }
+    } listener_;
 };
 
-// simple circle draw (triangle fan)
-void draw_circle(float cx, float cy, float r, int segments = 32) {
-  glBegin(GL_TRIANGLE_FAN);
-  glVertex2f(cx, cy);
-  for (int i = 0; i <= segments; ++i) {
-    float theta = 2.0f * 3.1415926f * float(i) / float(segments);
-    float x = r * cosf(theta);
-    float y = r * sinf(theta);
-    glVertex2f(cx + x, cy + y);
-  }
-  glEnd();
+void CreateColliderSample() {
+    static ColliderSystem system;
+    common::SystemObserverSubject::AddObserver(&system);
+    common::DrawObserverSubject::AddObserver(&system);
+    common::OnGuiObserverSubject::AddObserver(&system);
 }
 
+} // namespace collider
+
+// ------------------- MAIN -------------------
 int main() {
-  if (!glfwInit()) {
-    std::cerr << "Failed to init GLFW\n";
-    return -1;
-  }
+    common::WindowConfig config;
+    config.width = 800;
+    config.height = 600;
+    common::SetWindowConfig(config);
 
-  GLFWwindow* window = glfwCreateWindow(WIN_W, WIN_H, "Collider Trigger Sample", nullptr, nullptr);
-  if (!window) {
-    glfwTerminate();
-    return -1;
-  }
-  glfwMakeContextCurrent(window);
+    collider::CreateColliderSample();
 
-  if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
-    std::cerr << "Failed to init GLAD\n";
-    return -1;
-  }
-
-  // random
-  std::mt19937 rng((unsigned)std::chrono::high_resolution_clock::now().time_since_epoch().count());
-  std::uniform_real_distribution<float> rndX(50.0f, WIN_W - 50.0f);
-  std::uniform_real_distribution<float> rndY(50.0f, WIN_H - 50.0f);
-  std::uniform_real_distribution<float> rndR(8.0f, 30.0f);
-  std::uniform_real_distribution<float> rndV(-150.0f, 150.0f);
-
-  std::vector<RenderCircle> renderCircles;
-
-  // create sample bodies + colliders
-  const int N = 30;
-  for (int i = 0; i < N; ++i) {
-    BodyIndex b = AddBody(1.f);
-    Body& body = get_body_at(b);
-    body.position = core::Vec2F{ rndX(rng), rndY(rng) };
-    body.Velocity({ rndV(rng), rndV(rng) });
-
-    float r = rndR(rng);
-    ColliderIndex c = AddCollider(b, r);
-    renderCircles.push_back({ c, false });
-  }
-
-  // register listener
-  TriggerSample sampleListener(renderCircles);
-  SetContactListener(&sampleListener);
-
-  double last = glfwGetTime();
-  while (!glfwWindowShouldClose(window)) {
-    double now = glfwGetTime();
-    float dt = static_cast<float>(now - last);
-    last = now;
-
-    // simple bounds check + bounce
-    for (auto &rc : renderCircles) {
-      Collider& col = GetColliderAt(rc.collider);
-      Body& b = get_body_at(col.body);
-      float r = col.circle.radius;
-
-      // bounce on X
-      if (b.position.x - r < 0.f) {
-        b.position.x = r;
-        b.Velocity({ -b.position.x /* not ideal */, b.position.y }); // keep simple inversion
-        // better: invert velocity.x:
-        // but Body::velocity is private -> we can reuse Velocity setter only if available
-      }
-      if (b.position.x + r > WIN_W) {
-        b.position.x = WIN_W - r;
-        // invert velocity.x via Velocity (we need to read private velocity -> so instead call Velocity with inverted)
-        // We'll simulate by adding a temporary force: but simpler: set a negative velocity using Body::Velocity; we don't have access to current vel
-        // Workaround: call AddForce to produce bounce impulse - for sample, we'll teleport velocity by storing velocities externally would be cleaner.
-      }
-
-      // clamp Y
-      if (b.position.y - r < 0.f) b.position.y = r;
-      if (b.position.y + r > WIN_H) b.position.y = WIN_H - r;
-    }
-
-    // Update world physics (move bodies)
-    Tick(dt);
-
-    // Render
-    glViewport(0, 0, WIN_W, WIN_H);
-    glClearColor(0.12f, 0.12f, 0.12f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    glOrtho(0, WIN_W, WIN_H, 0, -1, 1); // top-left origin
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
-
-    for (const auto &rc : renderCircles) {
-      const Collider& col = GetColliderAt(rc.collider);
-      const Body& b = get_body_at(col.body);
-      float r = col.circle.radius;
-
-      if (rc.overlapping) {
-        glColor3f(0.0f, 1.0f, 0.0f); // green
-      } else {
-        glColor3f(1.0f, 0.0f, 0.0f); // red
-      }
-      draw_circle(b.position.x, b.position.y, r, 32);
-
-      // outline
-      glColor3f(0.0f, 0.0f, 0.0f);
-      glBegin(GL_LINE_LOOP);
-      const int seg = 32;
-      for (int i = 0; i < seg; ++i) {
-        float theta = 2.0f * 3.1415926f * float(i) / float(seg);
-        float x = r * cosf(theta);
-        float y = r * sinf(theta);
-        glVertex2f(b.position.x + x, b.position.y + y);
-      }
-      glEnd();
-    }
-
-    glfwSwapBuffers(window);
-    glfwPollEvents();
-  }
-
-  glfwDestroyWindow(window);
-  glfwTerminate();
-  return 0;
+    common::RunEngine();
 }

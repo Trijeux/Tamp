@@ -2,18 +2,15 @@
 #define CORE_CONTACT_LISTENER_H
 
 #include "container/indexed_container.h"
+#include "core/world.h" // pour ColliderIndex si besoin
 
 namespace common::world {
 
 class ContactListener {
 public:
   virtual ~ContactListener() = default;
-
-  // called when two colliders start overlapping
-  virtual void OnTriggerEnter(core::Index<core::Index<void>> a, core::Index<core::Index<void>> b) = 0;
-
-  // called when two colliders stop overlapping
-  virtual void OnTriggerExit(core::Index<core::Index<void>> a, core::Index<core::Index<void>> b) = 0;
+  virtual void OnTriggerEnter(ColliderIndex a, ColliderIndex b) = 0;
+  virtual void OnTriggerExit(ColliderIndex a, ColliderIndex b) = 0;
 };
 
 } // namespace common::world
