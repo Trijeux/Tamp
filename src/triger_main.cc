@@ -13,7 +13,7 @@
 // ------------------- COLLIDER SYSTEM -------------------
 namespace collider {
 struct Circle {
-  common::world::BodyIndex body;
+  common::world::BodyIndex body_index;
   float                    radius;
   float                    r, g, b, a;
 };
@@ -42,7 +42,7 @@ public:
   void Update(float dt) override {
     // Déplacement et rebond
     for (auto& c : circles_) {
-      auto& body = common::world::get_body_at(c.body);
+      auto& body = common::world::get_body_at(c.body_index);
       auto  vel = body.velocity();
       float r = c.radius;
 
@@ -66,11 +66,11 @@ public:
     }
 
     // Détection de collision simple (triggers)
-    for (auto& c : circles_) c.r = 1.f, c.g = 0.f, c.b = 0.f; // reset couleurs
+    for (auto& c : circles_) c.r = 1.f, c.g = 0.f, c.b = 0.f;
     for (size_t i = 0; i < circles_.size(); ++i) {
-      auto& b1 = common::world::get_body_at(circles_[i].body);
+      auto& b1 = common::world::get_body_at(circles_[i].body_index);
       for (size_t j = i + 1; j < circles_.size(); ++j) {
-        auto& b2 = common::world::get_body_at(circles_[j].body);
+        auto& b2 = common::world::get_body_at(circles_[j].body_index);
         float dist2 = (b1.position - b2.position).magnitude_sqr();
         float radiusSum = circles_[i].radius + circles_[j].radius;
         if (dist2 <= radiusSum * radiusSum) {
@@ -95,7 +95,7 @@ public:
 
   void Draw() override {
     for (auto& c : circles_) {
-      auto& body = common::world::get_body_at(c.body);
+      auto& body = common::world::get_body_at(c.body_index);
       common::DrawCircle(body.position.x, body.position.y, c.radius,
                          SDL_FColor{c.r, c.g, c.b, c.a});
     }
@@ -125,7 +125,7 @@ public:
     if (changed) {
       // supprimer les corps existants
       for (auto& c : circles_) {
-        common::world::RemoveBody(c.body);
+        common::world::RemoveBody(c.body_index);
       }
       circles_.clear();
 
